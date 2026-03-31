@@ -45,6 +45,13 @@ function getPlayerId() {
   return fresh;
 }
 
+function normalizeScorecard(scorecard) {
+  return {
+    ...INITIAL_SCORECARD,
+    ...(scorecard || {})
+  };
+}
+
 function computeBaseScore(categoryKey, dice) {
   const total = sum(dice);
   const counts = countsOf(dice).sort((a, b) => b - a);
@@ -80,7 +87,8 @@ function computeBaseScore(categoryKey, dice) {
   }
 }
 
-function getAllowedCategories(scorecard, dice) {
+function getAllowedCategories(scorecardRaw, dice) {
+  const scorecard = normalizeScorecard(scorecardRaw);
   const open = CATEGORIES.filter((c) => scorecard[c.key] === null).map((c) => c.key);
   const isYahtzeeRoll = countsOf(dice)[0] === 5;
   if (!isYahtzeeRoll || scorecard.yahtzee === null) return open;
@@ -96,7 +104,8 @@ function getAllowedCategories(scorecard, dice) {
   return open;
 }
 
-function scoreForCategory(scorecard, categoryKey, dice) {
+function scoreForCategory(scorecardRaw, categoryKey, dice) {
+  const scorecard = normalizeScorecard(scorecardRaw);
   const isExtraYahtzee = countsOf(dice)[0] === 5 && scorecard.yahtzee !== null && categoryKey !== 'yahtzee';
   if (!isExtraYahtzee) return computeBaseScore(categoryKey, dice);
 
@@ -126,13 +135,16 @@ function buildPlayer(name, playerId) {
 }
 
 function recalcPlayer(player) {
-  const upperSubtotal = UPPER_KEYS.reduce((acc, key) => acc + (player.scorecard[key] ?? 0), 0);
+  const scorecard = normalizeScorecard(player.scorecard);
+  const upperSubtotal = UPPER_KEYS.reduce((acc, key) => acc + (scorecard[key] ?? 0), 0);
   const upperBonus = upperSubtotal >= 63 ? 35 : 0;
-  const lowerTotal = LOWER_KEYS.reduce((acc, key) => acc + (player.scorecard[key] ?? 0), 0);
+  const lowerTotal = LOWER_KEYS.reduce((acc, key) => acc + (scorecard[key] ?? 0), 0);
   const totalScore = upperSubtotal + upperBonus + lowerTotal + ((player.yahtzeeBonusCount || 0) * 100);
-  const filledCount = Object.values(player.scorecard).filter((v) => v !== null).length;
+  const filledCount = Object.values(scorecard).filter((v) => v !== null).length;
+
   return {
     ...player,
+    scorecard,
     upperBonus,
     totalScore,
     filledCount,
@@ -164,15 +176,29 @@ function App() {
     });
   }, [roomId]);
 
-  const me = room?.players?.[playerId] || null;
+  const meRaw = room?.players?.[playerId] || null;
+  const me = meRaw ? { ...meRaw, scorecard: normalizeScorecard(meRaw.scorecard) } : null;
+
   const players = useMemo(() => {
-    const all = Object.values(room?.players || {}).filter((p) => !p.removed);
+    const all = Object.values(room?.players || {})
+      .filter((p) => !p.removed)
+      .map((p) => ({
+        ...p,
+        scorecard: normalizeScorecard(p.scorecard)
+      }));
+
     return all.sort((a, b) => a.joinedAt - b.joinedAt);
   }, [room]);
 
   const orderedPlayers = useMemo(() => {
     const order = room?.order || [];
-    return order.map((id) => room?.players?.[id]).filter((p) => p && !p.removed);
+    return order
+      .map((id) => room?.players?.[id])
+      .filter((p) => p && !p.removed)
+      .map((p) => ({
+        ...p,
+        scorecard: normalizeScorecard(p.scorecard)
+      }));
   }, [room]);
 
   const currentTurn = room?.currentTurn;
@@ -203,7 +229,7 @@ function App() {
     const name = pseudo.trim();
     if (!name) return setStatusText('Entre un pseudo.');
     localStorage.setItem('yahtzee_market_name', name);
-    let newRoom = roomCode();
+    const newRoom = roomCode();
     const roomRef = ref(db, `rooms/${newRoom}`);
     await set(roomRef, {
       id: newRoom,
@@ -372,7 +398,11 @@ function App() {
 
   async function scoreCategory(categoryKey) {
     if (!iAmActive || currentTurn.rollNumber < 1) return;
-    const player = room.players[playerId];
+    const player = {
+      ...room.players[playerId],
+      scorecard: normalizeScorecard(room.players[playerId]?.scorecard)
+    };
+
     if (player.scorecard[categoryKey] !== null) return;
     const allowed = getAllowedCategories(player.scorecard, currentTurn.dice);
     if (!allowed.includes(categoryKey)) return setStatusText('Cette case n’est pas autorisée pour ce roll.');
