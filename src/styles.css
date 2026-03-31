@@ -1,0 +1,66 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, input {
+  font: inherit;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  padding: 0.65rem 0.9rem;
+}
+button {
+  cursor: pointer;
+  background: white;
+}
+button:hover { background: #f9fafb; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+input { width: 100%; }
+
+.app-shell { padding: 1.25rem; }
+.topbar {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 1rem; margin-bottom: 1rem;
+}
+.topbar h1 { margin: 0 0 0.2rem; }
+.topbar p { margin: 0; color: #6b7280; }
+.pill { background: #111827; color: white; padding: 0.5rem 0.75rem; border-radius: 999px; }
+.layout { display: grid; grid-template-columns: 1.15fr 1.2fr 0.8fr; gap: 1rem; }
+.left-column, .center-column, .right-column { display: grid; gap: 1rem; align-content: start; }
+.card {
+  background: white; border-radius: 18px; padding: 1rem;
+  box-shadow: 0 10px 25px rgba(17, 24, 39, 0.07);
+}
+.auth-card { max-width: 700px; margin: 3rem auto; }
+.auth-grid { display: grid; gap: 1rem; grid-template-columns: 1fr 1fr; }
+.join-block { display: grid; gap: 0.75rem; }
+.row-between { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+.players-list, .actions-grid, .summary-grid { display: grid; gap: 0.75rem; }
+.player-row {
+  display: flex; justify-content: space-between; gap: 1rem; align-items: center;
+  padding: 0.75rem; border-radius: 14px; background: #f9fafb;
+}
+.player-row.active { outline: 2px solid #2563eb; }
+.muted, .status { color: #6b7280; }
+.status { margin-top: 0.75rem; }
+.danger { border-color: #fecaca; color: #b91c1c; }
+.dice-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1rem 0; }
+.die {
+  width: 56px; height: 56px; font-size: 1.35rem; font-weight: 700;
+}
+.die.held { background: #dbeafe; border-color: #60a5fa; }
+.auction-box { margin-top: 1rem; padding: 1rem; background: #f9fafb; border-radius: 14px; }
+.bid-row, .bid-item { display: flex; gap: 0.75rem; align-items: center; margin-top: 0.75rem; }
+.bid-item { justify-content: space-between; }
+.score-table { width: 100%; border-collapse: collapse; }
+.score-table th, .score-table td { padding: 0.6rem; border-bottom: 1px solid #e5e7eb; text-align: left; }
+.ranking { padding-left: 1.2rem; margin: 0; }
+.ranking li { display: flex; justify-content: space-between; padding: 0.45rem 0; }
+.summary-grid { grid-template-columns: 1fr 1fr; margin-top: 1rem; }
+
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: 1fr; }
+}
