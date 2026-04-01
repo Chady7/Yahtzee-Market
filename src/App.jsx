@@ -56,6 +56,7 @@ function computeBaseScore(categoryKey, dice) {
   const total = sum(dice);
   const counts = countsOf(dice).sort((a, b) => b - a);
   const unique = sortNums(dice);
+
   const hasRun = (len) => {
     let streak = 1;
     for (let i = 1; i < unique.length; i += 1) {
@@ -488,6 +489,112 @@ function App() {
       .sort((a, b) => b.amount - a.amount);
   }, [auction, room]);
 
+  function renderPlayerGrid(player) {
+    const isMe = player.id === playerId;
+    const isPlayerActive = currentTurn?.activePlayerId === player.id;
+    const canScoreThisCard = isMe && iAmActive && currentTurn?.rollNumber >= 1;
+    const allowed = canScoreThisCard ? getAllowedCategories(player.scorecard, currentTurn.dice) : [];
+
+    return (
+      <div
+        key={player.id}
+        className="card"
+        style={{
+          border: isPlayerActive ? '2px solid #2563eb' : '1px solid #e5e7eb'
+        }}
+      >
+        <div className="row-between" style={{ marginBottom: 12 }}>
+          <div>
+            <h2 style={{ marginBottom: 4 }}>
+              {player.name} {isMe ? '(moi)' : ''}
+            </h2>
+            <div className="muted">
+              {player.coins} pièces · {player.filledCount}/13 cases
+            </div>
+          </div>
+          <div className="pill" style={{ background: isPlayerActive ? '#dbeafe' : '#eef2ff', color: '#1e3a8a' }}>
+            Score final {player.finalScore}
+          </div>
+        </div>
+
+        <table className="score-table">
+          <thead>
+            <tr>
+              <th>Case</th>
+              <th>Valeur</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {CATEGORIES.map((cat) => {
+              const preview = canScoreThisCard ? scoreForCategory(player.scorecard, cat.key, currentTurn.dice) : 0;
+              const canValidate = canScoreThisCard && player.scorecard[cat.key] === null && allowed.includes(cat.key);
+
+              return (
+                <tr key={cat.key}>
+                  <td>{cat.label}</td>
+                  <td>{player.scorecard[cat.key] === null ? '-' : player.scorecard[cat.key]}</td>
+                  <td>
+                    {canValidate ? (
+                      <button onClick={() => scoreCategory(cat.key)}>
+                        Valider ({preview})
+                      </button>
+                    ) : (
+                      ''
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        <div className="summary-grid" style={{ marginTop: 16 }}>
+          <div>Pièces: <strong>{player.coins}</strong></div>
+          <div>Bonus supérieur: <strong>{player.upperBonus}</strong></div>
+          <div>Bonus Yahtzee: <strong>{(player.yahtzeeBonusCount || 0) * 100}</strong></div>
+          <div>Score Yahtzee: <strong>{player.totalScore}</strong></div>
+        </div>
+
+        {isPlayerActive && currentTurn && (
+          <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #e5e7eb' }}>
+            <div className="row-between" style={{ marginBottom: 10 }}>
+              <strong>Roll actuel</strong>
+              <span className="muted">Lancer {currentTurn.rollNumber} / 3</span>
+            </div>
+
+            <div className="dice-row" style={{ marginBottom: 12 }}>
+              {currentTurn.dice.map((die, index) => (
+                <button
+                  key={`${player.id}-${die}-${index}`}
+                  className={`die ${currentTurn.holds[index] ? 'held' : ''}`}
+                  onClick={() => toggleHold(index)}
+                  disabled={!iAmActive || ![1, 2].includes(currentTurn.rollNumber)}
+                >
+                  {die}
+                </button>
+              ))}
+            </div>
+
+            {iAmActive && (
+              <div className="actions-grid">
+                {currentTurn.rollNumber === 0 && <button onClick={rollFirst}>1er lancer</button>}
+                {[1, 2].includes(currentTurn.rollNumber) && !(currentTurn.rollNumber === 2 && auction && auction.phase !== 'sold') && (
+                  <button onClick={reroll}>
+                    {currentTurn.rollNumber === 1 ? '2e lancer' : '3e lancer'}
+                  </button>
+                )}
+                {currentTurn.rollNumber === 2 && !auction && (
+                  <button onClick={openAuction}>Ouvrir les enchères</button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -508,7 +615,11 @@ function App() {
           <div className="auth-grid">
             <button onClick={createRoom}>Créer une salle</button>
             <div className="join-block">
-              <input placeholder="Code de salle" value={roomIdInput} onChange={(e) => setRoomIdInput(e.target.value.toUpperCase())} />
+              <input
+                placeholder="Code de salle"
+                value={roomIdInput}
+                onChange={(e) => setRoomIdInput(e.target.value.toUpperCase())}
+              />
               <button onClick={joinRoom}>Rejoindre</button>
             </div>
           </div>
@@ -554,93 +665,79 @@ function App() {
                 <p>Vendeur: <strong>{seller?.name}</strong></p>
                 <p>Joueur actif: <strong>{activePlayer?.name}</strong></p>
                 <p>Lancer: <strong>{currentTurn.rollNumber} / 3</strong></p>
-                <div className="dice-row">
-                  {currentTurn.dice.map((die, index) => (
-                    <button
-                      key={`${die}-${index}`}
-                      className={`die ${currentTurn.holds[index] ? 'held' : ''}`}
-                      onClick={() => toggleHold(index)}
-                      disabled={!iAmActive || ![1, 2].includes(currentTurn.rollNumber)}
-                    >
-                      {die}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="actions-grid">
-                  {iAmActive && currentTurn.rollNumber === 0 && <button onClick={rollFirst}>1er lancer</button>}
-                  {iAmActive && [1, 2].includes(currentTurn.rollNumber) && !(currentTurn.rollNumber === 2 && auction && auction.phase !== 'sold') && <button onClick={reroll}>{currentTurn.rollNumber === 1 ? '2e lancer' : '3e lancer'}</button>}
-                  {iAmActive && currentTurn.rollNumber === 2 && !auction && <button onClick={openAuction}>Ouvrir les enchères</button>}
-                </div>
-
                 {auction && (
                   <div className="auction-box">
                     <h3>Enchère</h3>
-                    <p>Phase: {auction.phase === 'bidding' ? 'offres' : auction.phase === 'decision' ? 'décision du vendeur' : auction.phase === 'sold' ? 'vendu' : 'fermée'}</p>
-                    {(auction.phase === 'bidding' || auction.phase === 'decision') && <p>Temps restant: {remainingAuctionSeconds}s</p>}
+                    <p>
+                      Phase: {
+                        auction.phase === 'bidding'
+                          ? 'offres'
+                          : auction.phase === 'decision'
+                            ? 'décision du vendeur'
+                            : auction.phase === 'sold'
+                              ? 'vendu'
+                              : 'fermée'
+                      }
+                    </p>
+                    {(auction.phase === 'bidding' || auction.phase === 'decision') && (
+                      <p>Temps restant: {remainingAuctionSeconds}s</p>
+                    )}
+
                     {auction.phase === 'bidding' && !iAmSeller && me && me.filledCount < 13 && (
                       <div className="bid-row">
-                        <input type="number" min="1" value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} placeholder="Montant" />
+                        <input
+                          type="number"
+                          min="1"
+                          value={bidAmount}
+                          onChange={(e) => setBidAmount(e.target.value)}
+                          placeholder="Montant"
+                        />
                         <button onClick={placeBid}>Envoyer mon offre</button>
                       </div>
                     )}
-                    {auction.phase === 'bidding' && iAmSeller && <p>Les autres joueurs peuvent soumettre une seule offre privée.</p>}
+
+                    {auction.phase === 'bidding' && iAmSeller && (
+                      <p>Les autres joueurs peuvent soumettre une seule offre privée.</p>
+                    )}
+
                     {iAmSeller && (auction.phase === 'decision' || auction.phase === 'sold') && (
                       <div>
                         <h4>Offres reçues</h4>
-                        {visibleBids.length === 0 ? <p>Aucune offre.</p> : visibleBids.map((bid) => (
-                          <div key={bid.playerId} className="bid-item">
-                            <span>{bid.name}: {bid.amount} pièces</span>
-                            {auction.phase === 'decision' && <button onClick={() => acceptBid(bid.playerId, bid.amount)}>Accepter</button>}
-                          </div>
-                        ))}
-                        {auction.phase === 'decision' && <button onClick={closeAuctionWithoutSale}>Refuser toutes les offres</button>}
+                        {visibleBids.length === 0 ? (
+                          <p>Aucune offre.</p>
+                        ) : (
+                          visibleBids.map((bid) => (
+                            <div key={bid.playerId} className="bid-item">
+                              <span>{bid.name}: {bid.amount} pièces</span>
+                              {auction.phase === 'decision' && (
+                                <button onClick={() => acceptBid(bid.playerId, bid.amount)}>
+                                  Accepter
+                                </button>
+                              )}
+                            </div>
+                          ))
+                        )}
+                        {auction.phase === 'decision' && (
+                          <button onClick={closeAuctionWithoutSale}>Refuser toutes les offres</button>
+                        )}
                       </div>
                     )}
-                    {!iAmSeller && auction.phase !== 'bidding' && <p>Enchère en cours, attente de la décision du vendeur.</p>}
-                    {auction.phase === 'sold' && <p>Roll vendu à {room.players?.[auction.soldTo]?.name} pour {auction.amount} pièces.</p>}
+
+                    {!iAmSeller && auction.phase !== 'bidding' && (
+                      <p>Enchère en cours, attente de la décision du vendeur.</p>
+                    )}
+
+                    {auction.phase === 'sold' && (
+                      <p>Roll vendu à {room.players?.[auction.soldTo]?.name} pour {auction.amount} pièces.</p>
+                    )}
                   </div>
                 )}
               </div>
             )}
           </section>
 
-          <section className="center-column">
-            <div className="card">
-              <h2>Mon score</h2>
-              {me ? (
-                <table className="score-table">
-                  <thead>
-                    <tr><th>Case</th><th>Valeur</th><th>Action</th></tr>
-                  </thead>
-                  <tbody>
-                    {CATEGORIES.map((cat) => {
-                      const allowed = currentTurn && iAmActive ? getAllowedCategories(me.scorecard, currentTurn.dice) : [];
-                      const preview = currentTurn ? scoreForCategory(me.scorecard, cat.key, currentTurn.dice) : 0;
-                      return (
-                        <tr key={cat.key}>
-                          <td>{cat.label}</td>
-                          <td>{me.scorecard[cat.key] === null ? '-' : me.scorecard[cat.key]}</td>
-                          <td>
-                            {me.scorecard[cat.key] === null && iAmActive && currentTurn?.rollNumber >= 1 && allowed.includes(cat.key) && (
-                              <button onClick={() => scoreCategory(cat.key)}>Valider ({preview})</button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              ) : <p>En attente...</p>}
-              {me && (
-                <div className="summary-grid">
-                  <div>Pièces: <strong>{me.coins}</strong></div>
-                  <div>Bonus supérieur: <strong>{me.upperBonus}</strong></div>
-                  <div>Bonus Yahtzee: <strong>{(me.yahtzeeBonusCount || 0) * 100}</strong></div>
-                  <div>Score final: <strong>{me.finalScore}</strong></div>
-                </div>
-              )}
-            </div>
+          <section className="center-column" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {orderedPlayers.map((player) => renderPlayerGrid(player))}
           </section>
 
           <section className="right-column">
@@ -655,6 +752,7 @@ function App() {
                 ))}
               </ol>
             </div>
+
             {room.status === 'finished' && (
               <div className="card">
                 <h2>Partie terminée</h2>
