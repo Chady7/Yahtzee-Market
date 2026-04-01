@@ -8,7 +8,7 @@ import {
   remove
 } from 'firebase/database';
 import { db } from './firebase';
-import './index.css';
+import './styles.css';
 
 const CATEGORIES = [
   { key: 'ones', label: 'As' },
