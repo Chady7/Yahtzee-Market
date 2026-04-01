@@ -8,21 +8,22 @@ import {
   remove
 } from 'firebase/database';
 import { db } from './firebase';
+import './index.css';
 
 const CATEGORIES = [
-  { key: 'ones', label: 'As', section: 'upper' },
-  { key: 'twos', label: 'Deux', section: 'upper' },
-  { key: 'threes', label: 'Trois', section: 'upper' },
-  { key: 'fours', label: 'Quatre', section: 'upper' },
-  { key: 'fives', label: 'Cinq', section: 'upper' },
-  { key: 'sixes', label: 'Six', section: 'upper' },
-  { key: 'threeKind', label: 'Brelan', section: 'lower' },
-  { key: 'fourKind', label: 'Carré', section: 'lower' },
-  { key: 'fullHouse', label: 'Full', section: 'lower' },
-  { key: 'smallStraight', label: 'Petite suite', section: 'lower' },
-  { key: 'largeStraight', label: 'Grande suite', section: 'lower' },
-  { key: 'yahtzee', label: 'Yahtzee', section: 'lower' },
-  { key: 'chance', label: 'Chance', section: 'lower' }
+  { key: 'ones', label: 'As' },
+  { key: 'twos', label: 'Deux' },
+  { key: 'threes', label: 'Trois' },
+  { key: 'fours', label: 'Quatre' },
+  { key: 'fives', label: 'Cinq' },
+  { key: 'sixes', label: 'Six' },
+  { key: 'threeKind', label: 'Brelan' },
+  { key: 'fourKind', label: 'Carré' },
+  { key: 'fullHouse', label: 'Full' },
+  { key: 'smallStraight', label: 'Petite suite' },
+  { key: 'largeStraight', label: 'Grande suite' },
+  { key: 'yahtzee', label: 'Yahtzee' },
+  { key: 'chance', label: 'Chance' }
 ];
 
 const UPPER_KEYS = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes'];
@@ -32,10 +33,17 @@ const INITIAL_SCORECARD = Object.fromEntries(CATEGORIES.map((c) => [c.key, null]
 const uid = () => Math.random().toString(36).slice(2, 10);
 const roomCode = () => Math.random().toString(36).slice(2, 7).toUpperCase();
 const sum = (arr) => arr.reduce((a, b) => a + b, 0);
-const countsOf = (dice) => Object.values(dice.reduce((m, d) => ({ ...m, [d]: (m[d] || 0) + 1 }), {}));
 const sortNums = (arr) => [...new Set(arr)].sort((a, b) => a - b);
 const randomDie = () => 1 + Math.floor(Math.random() * 6);
 const rollDiceWithHolds = (prevDice, holds) => prevDice.map((d, i) => (holds[i] ? d : randomDie()));
+
+function countsOf(dice) {
+  const counts = {};
+  dice.forEach((d) => {
+    counts[d] = (counts[d] || 0) + 1;
+  });
+  return Object.values(counts);
+}
 
 function getPlayerId() {
   const existing = localStorage.getItem('yahtzee_market_player_id');
@@ -92,6 +100,7 @@ function getAllowedCategories(scorecardRaw, dice) {
   const scorecard = normalizeScorecard(scorecardRaw);
   const open = CATEGORIES.filter((c) => scorecard[c.key] === null).map((c) => c.key);
   const isYahtzeeRoll = countsOf(dice)[0] === 5;
+
   if (!isYahtzeeRoll || scorecard.yahtzee === null) return open;
 
   const face = dice[0];
@@ -107,7 +116,12 @@ function getAllowedCategories(scorecardRaw, dice) {
 
 function scoreForCategory(scorecardRaw, categoryKey, dice) {
   const scorecard = normalizeScorecard(scorecardRaw);
-  const isExtraYahtzee = countsOf(dice)[0] === 5 && scorecard.yahtzee !== null && categoryKey !== 'yahtzee';
+  const isExtraYahtzee =
+    countsOf(dice)[0] === 5 &&
+    scorecard.yahtzee !== null &&
+    scorecard.yahtzee === 50 &&
+    categoryKey !== 'yahtzee';
+
   if (!isExtraYahtzee) return computeBaseScore(categoryKey, dice);
 
   const total = sum(dice);
@@ -153,7 +167,7 @@ function recalcPlayer(player) {
   };
 }
 
-function App() {
+export default function App() {
   const [playerId] = useState(getPlayerId());
   const [pseudo, setPseudo] = useState(localStorage.getItem('yahtzee_market_name') || '');
   const [roomIdInput, setRoomIdInput] = useState('');
@@ -172,49 +186,39 @@ function App() {
     if (!roomId) return undefined;
     const roomRef = ref(db, `rooms/${roomId}`);
     return onValue(roomRef, (snap) => {
-      const data = snap.val();
-      setRoom(data || null);
+      setRoom(snap.val() || null);
     });
   }, [roomId]);
 
   const meRaw = room?.players?.[playerId] || null;
   const me = meRaw ? { ...meRaw, scorecard: normalizeScorecard(meRaw.scorecard) } : null;
 
-  const players = useMemo(() => {
-    const all = Object.values(room?.players || {})
-      .filter((p) => !p.removed)
-      .map((p) => ({
-        ...p,
-        scorecard: normalizeScorecard(p.scorecard)
-      }));
-
-    return all.sort((a, b) => a.joinedAt - b.joinedAt);
-  }, [room]);
-
   const orderedPlayers = useMemo(() => {
     const order = room?.order || [];
     return order
       .map((id) => room?.players?.[id])
       .filter((p) => p && !p.removed)
-      .map((p) => ({
-        ...p,
-        scorecard: normalizeScorecard(p.scorecard)
-      }));
+      .map((p) => ({ ...p, scorecard: normalizeScorecard(p.scorecard) }));
   }, [room]);
 
-  const currentTurn = room?.currentTurn;
+  const scoreboard = useMemo(() => {
+    return [...orderedPlayers].sort((a, b) => b.finalScore - a.finalScore);
+  }, [orderedPlayers]);
+
+  const currentTurn = room?.currentTurn || null;
   const activePlayer = currentTurn ? room?.players?.[currentTurn.activePlayerId] : null;
   const seller = currentTurn ? room?.players?.[currentTurn.sellerId] : null;
+  const auction = currentTurn?.auction || null;
   const iAmHost = room?.hostId === playerId;
   const iAmActive = currentTurn?.activePlayerId === playerId;
   const iAmSeller = currentTurn?.sellerId === playerId;
-  const auction = currentTurn?.auction || null;
 
-  const remainingAuctionSeconds = auction?.phase === 'bidding'
-    ? Math.max(0, Math.ceil((auction.biddingEndsAt - clock) / 1000))
-    : auction?.phase === 'decision'
-      ? Math.max(0, Math.ceil((auction.decisionEndsAt - clock) / 1000))
-      : 0;
+  const remainingAuctionSeconds =
+    auction?.phase === 'bidding'
+      ? Math.max(0, Math.ceil((auction.biddingEndsAt - clock) / 1000))
+      : auction?.phase === 'decision'
+        ? Math.max(0, Math.ceil((auction.decisionEndsAt - clock) / 1000))
+        : 0;
 
   useEffect(() => {
     if (!roomId || !auction) return;
@@ -224,14 +228,19 @@ function App() {
     if (auction.phase === 'decision' && auction.decisionEndsAt <= clock && iAmSeller) {
       closeAuctionWithoutSale();
     }
-  }, [clock, auction, roomId]);
+  }, [clock, auction, roomId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function createRoom() {
     const name = pseudo.trim();
-    if (!name) return setStatusText('Entre un pseudo.');
+    if (!name) {
+      setStatusText('Entre un pseudo.');
+      return;
+    }
+
     localStorage.setItem('yahtzee_market_name', name);
     const newRoom = roomCode();
     const roomRef = ref(db, `rooms/${newRoom}`);
+
     await set(roomRef, {
       id: newRoom,
       hostId: playerId,
@@ -246,6 +255,7 @@ function App() {
         [playerId]: buildPlayer(name, playerId)
       }
     });
+
     const url = `${window.location.origin}${window.location.pathname}?room=${newRoom}`;
     window.history.replaceState({}, '', url);
     setRoomId(newRoom);
@@ -256,20 +266,38 @@ function App() {
   async function joinRoom() {
     const name = pseudo.trim();
     const targetRoom = roomIdInput.trim().toUpperCase();
-    if (!name || !targetRoom) return setStatusText('Entre un pseudo et un code de salle.');
+
+    if (!name || !targetRoom) {
+      setStatusText('Entre un pseudo et un code de salle.');
+      return;
+    }
+
     localStorage.setItem('yahtzee_market_name', name);
     const roomRef = ref(db, `rooms/${targetRoom}`);
     const snap = await get(roomRef);
-    if (!snap.exists()) return setStatusText('Salle introuvable.');
+
+    if (!snap.exists()) {
+      setStatusText('Salle introuvable.');
+      return;
+    }
+
     const data = snap.val();
-    if (data.status !== 'lobby') return setStatusText('La partie a déjà commencé.');
+    if (data.status !== 'lobby') {
+      setStatusText('La partie a déjà commencé.');
+      return;
+    }
+
     const activeCount = Object.values(data.players || {}).filter((p) => !p.removed).length;
-    if (activeCount >= 7) return setStatusText('La salle est pleine (7 joueurs max).');
+    if (activeCount >= 7) {
+      setStatusText('La salle est pleine (7 joueurs max).');
+      return;
+    }
 
     await update(roomRef, {
       [`players/${playerId}`]: buildPlayer(name, playerId),
       order: [...(data.order || []), playerId]
     });
+
     const url = `${window.location.origin}${window.location.pathname}?room=${targetRoom}`;
     window.history.replaceState({}, '', url);
     setRoomId(targetRoom);
@@ -295,9 +323,13 @@ function App() {
 
   async function startGame() {
     if (!iAmHost) return;
-    const livePlayers = players;
-    if (livePlayers.length < 1) return setStatusText('Il faut au moins 1 joueur.');
-    const order = livePlayers.map((p) => p.id);
+    if (orderedPlayers.length < 1) {
+      setStatusText('Il faut au moins 1 joueur.');
+      return;
+    }
+
+    const order = orderedPlayers.map((p) => p.id);
+
     await update(ref(db, `rooms/${roomId}`), {
       status: 'in_progress',
       order,
@@ -359,11 +391,18 @@ function App() {
   async function placeBid() {
     const amount = Number(bidAmount);
     if (!auction || auction.phase !== 'bidding') return;
+
     if (!me || me.filledCount >= 13 || me.coins < amount || amount <= 0) {
-      return setStatusText('Offre invalide.');
+      setStatusText('Offre invalide.');
+      return;
     }
+
     if (playerId === currentTurn.sellerId) return;
-    if (auction.bids?.[playerId]) return setStatusText('Une seule offre par joueur.');
+    if (auction.bids?.[playerId]) {
+      setStatusText('Une seule offre par joueur.');
+      return;
+    }
+
     await set(ref(db, `rooms/${roomId}/currentTurn/auction/bids/${playerId}`), {
       playerId,
       amount,
@@ -379,14 +418,15 @@ function App() {
 
   async function acceptBid(buyerId, amount) {
     if (!iAmSeller || auction?.phase !== 'decision') return;
+
     const buyer = room.players[buyerId];
     if (!buyer || buyer.removed || buyer.coins < amount || buyer.filledCount >= 13) return;
+
     const sellerData = room.players[currentTurn.sellerId];
+
     await update(ref(db, `rooms/${roomId}`), {
       [`players/${buyerId}/coins`]: buyer.coins - amount,
       [`players/${currentTurn.sellerId}/coins`]: sellerData.coins + amount,
-      [`players/${buyerId}/finalScore`]: buyer.finalScore - amount,
-      [`players/${currentTurn.sellerId}/finalScore`]: sellerData.finalScore + amount,
       'currentTurn/activePlayerId': buyerId,
       'currentTurn/auction': {
         phase: 'sold',
@@ -395,21 +435,44 @@ function App() {
         bids: auction.bids || {}
       }
     });
+
+    const buyerUpdated = recalcPlayer({
+      ...buyer,
+      coins: buyer.coins - amount
+    });
+
+    const sellerUpdated = recalcPlayer({
+      ...sellerData,
+      coins: sellerData.coins + amount
+    });
+
+    await update(ref(db, `rooms/${roomId}`), {
+      [`players/${buyerId}`]: buyerUpdated,
+      [`players/${currentTurn.sellerId}`]: sellerUpdated
+    });
   }
 
   async function scoreCategory(categoryKey) {
     if (!iAmActive || currentTurn.rollNumber < 1) return;
+
     const player = {
       ...room.players[playerId],
       scorecard: normalizeScorecard(room.players[playerId]?.scorecard)
     };
 
     if (player.scorecard[categoryKey] !== null) return;
+
     const allowed = getAllowedCategories(player.scorecard, currentTurn.dice);
-    if (!allowed.includes(categoryKey)) return setStatusText('Cette case n’est pas autorisée pour ce roll.');
+    if (!allowed.includes(categoryKey)) {
+      setStatusText('Cette case n’est pas autorisée pour ce roll.');
+      return;
+    }
 
     const categoryScore = scoreForCategory(player.scorecard, categoryKey, currentTurn.dice);
-    const isBonusYahtzee = countsOf(currentTurn.dice)[0] === 5 && player.scorecard.yahtzee === 50 && categoryKey !== 'yahtzee';
+    const isBonusYahtzee =
+      countsOf(currentTurn.dice)[0] === 5 &&
+      player.scorecard.yahtzee === 50 &&
+      categoryKey !== 'yahtzee';
 
     const updatedPlayer = recalcPlayer({
       ...player,
@@ -420,11 +483,13 @@ function App() {
     await update(ref(db, `rooms/${roomId}`), {
       [`players/${playerId}`]: updatedPlayer
     });
+
     await advanceTurn();
   }
 
   async function advanceTurn() {
     const nextGlobal = (room.globalTurnIndex || 0) + 1;
+
     if (nextGlobal >= room.totalGlobalTurns) {
       await update(ref(db, `rooms/${roomId}`), {
         status: 'finished',
@@ -437,6 +502,7 @@ function App() {
     const order = room.order || [];
     let idx = room.turnIndex || 0;
     let nextId = null;
+
     for (let i = 0; i < order.length; i += 1) {
       idx = (idx + 1) % order.length;
       const candidate = room.players[order[idx]];
@@ -478,122 +544,18 @@ function App() {
     });
   }
 
-  const scoreboard = useMemo(() => {
-    return [...players].sort((a, b) => b.finalScore - a.finalScore);
-  }, [players]);
-
   const visibleBids = useMemo(() => {
     if (!auction?.bids) return [];
     return Object.values(auction.bids)
-      .map((bid) => ({ ...bid, name: room?.players?.[bid.playerId]?.name || 'Inconnu' }))
+      .map((bid) => ({
+        ...bid,
+        name: room?.players?.[bid.playerId]?.name || 'Inconnu'
+      }))
       .sort((a, b) => b.amount - a.amount);
   }, [auction, room]);
 
-  function renderPlayerGrid(player) {
-    const isMe = player.id === playerId;
-    const isPlayerActive = currentTurn?.activePlayerId === player.id;
-    const canScoreThisCard = isMe && iAmActive && currentTurn?.rollNumber >= 1;
-    const allowed = canScoreThisCard ? getAllowedCategories(player.scorecard, currentTurn.dice) : [];
-
-    return (
-      <div
-        key={player.id}
-        className="card"
-        style={{
-          border: isPlayerActive ? '2px solid #2563eb' : '1px solid #e5e7eb'
-        }}
-      >
-        <div className="row-between" style={{ marginBottom: 12 }}>
-          <div>
-            <h2 style={{ marginBottom: 4 }}>
-              {player.name} {isMe ? '(moi)' : ''}
-            </h2>
-            <div className="muted">
-              {player.coins} pièces · {player.filledCount}/13 cases
-            </div>
-          </div>
-          <div className="pill" style={{ background: isPlayerActive ? '#dbeafe' : '#eef2ff', color: '#1e3a8a' }}>
-            Score final {player.finalScore}
-          </div>
-        </div>
-
-        <table className="score-table">
-          <thead>
-            <tr>
-              <th>Case</th>
-              <th>Valeur</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {CATEGORIES.map((cat) => {
-              const preview = canScoreThisCard ? scoreForCategory(player.scorecard, cat.key, currentTurn.dice) : 0;
-              const canValidate = canScoreThisCard && player.scorecard[cat.key] === null && allowed.includes(cat.key);
-
-              return (
-                <tr key={cat.key}>
-                  <td>{cat.label}</td>
-                  <td>{player.scorecard[cat.key] === null ? '-' : player.scorecard[cat.key]}</td>
-                  <td>
-                    {canValidate ? (
-                      <button onClick={() => scoreCategory(cat.key)}>
-                        Valider ({preview})
-                      </button>
-                    ) : (
-                      ''
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        <div className="summary-grid" style={{ marginTop: 16 }}>
-          <div>Pièces: <strong>{player.coins}</strong></div>
-          <div>Bonus supérieur: <strong>{player.upperBonus}</strong></div>
-          <div>Bonus Yahtzee: <strong>{(player.yahtzeeBonusCount || 0) * 100}</strong></div>
-          <div>Score Yahtzee: <strong>{player.totalScore}</strong></div>
-        </div>
-
-        {isPlayerActive && currentTurn && (
-          <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #e5e7eb' }}>
-            <div className="row-between" style={{ marginBottom: 10 }}>
-              <strong>Roll actuel</strong>
-              <span className="muted">Lancer {currentTurn.rollNumber} / 3</span>
-            </div>
-
-            <div className="dice-row" style={{ marginBottom: 12 }}>
-              {currentTurn.dice.map((die, index) => (
-                <button
-                  key={`${player.id}-${die}-${index}`}
-                  className={`die ${currentTurn.holds[index] ? 'held' : ''}`}
-                  onClick={() => toggleHold(index)}
-                  disabled={!iAmActive || ![1, 2].includes(currentTurn.rollNumber)}
-                >
-                  {die}
-                </button>
-              ))}
-            </div>
-
-            {iAmActive && (
-              <div className="actions-grid">
-                {currentTurn.rollNumber === 0 && <button onClick={rollFirst}>1er lancer</button>}
-                {[1, 2].includes(currentTurn.rollNumber) && !(currentTurn.rollNumber === 2 && auction && auction.phase !== 'sold') && (
-                  <button onClick={reroll}>
-                    {currentTurn.rollNumber === 1 ? '2e lancer' : '3e lancer'}
-                  </button>
-                )}
-                {currentTurn.rollNumber === 2 && !auction && (
-                  <button onClick={openAuction}>Ouvrir les enchères</button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
+  const canScoreMe = iAmActive && currentTurn?.rollNumber >= 1;
+  const myAllowed = canScoreMe ? getAllowedCategories(me?.scorecard || INITIAL_SCORECARD, currentTurn.dice) : [];
 
   return (
     <div className="app-shell">
@@ -628,119 +590,31 @@ function App() {
       )}
 
       {room && (
-        <main className="layout">
-          <section className="left-column">
+        <main className="board-layout">
+          <aside className="side-panel">
             <div className="card">
               <div className="row-between">
                 <h2>Lobby / Partie</h2>
                 <button onClick={copyLink}>Copier le lien</button>
               </div>
-              <p>Ordre des tours: ordre d’arrivée dans la salle.</p>
-              <p>Tour global: {room.globalTurnIndex} / {room.totalGlobalTurns || '-'} </p>
-              <p>Statut: {room.status === 'lobby' ? 'En lobby' : room.status === 'in_progress' ? 'En cours' : 'Terminée'}</p>
-              {room.status === 'lobby' && iAmHost && <button onClick={startGame}>Lancer la partie</button>}
+              <p>Ordre des tours : ordre d’arrivée dans la salle.</p>
+              <p>Tour global : {room.globalTurnIndex} / {room.totalGlobalTurns || '-'}</p>
+              <p>
+                Statut : {room.status === 'lobby' ? 'En lobby' : room.status === 'in_progress' ? 'En cours' : 'Terminée'}
+              </p>
+              {room.status === 'lobby' && iAmHost && (
+                <button onClick={startGame}>Lancer la partie</button>
+              )}
               {statusText && <p className="status">{statusText}</p>}
             </div>
 
             <div className="card">
-              <h2>Joueurs</h2>
-              <div className="players-list">
-                {orderedPlayers.length ? orderedPlayers.map((p, index) => (
-                  <div key={p.id} className={`player-row ${currentTurn?.activePlayerId === p.id ? 'active' : ''}`}>
-                    <div>
-                      <strong>{index + 1}. {p.name}</strong>
-                      <div className="muted">{p.coins} pièces · {p.filledCount}/13 cases · score final {p.finalScore}</div>
-                    </div>
-                    {iAmHost && p.id !== playerId && room.status !== 'finished' && (
-                      <button className="danger" onClick={() => removePlayer(p.id)}>Exclure</button>
-                    )}
-                  </div>
-                )) : <p>Aucun joueur.</p>}
-              </div>
+              <h2>Tour actuel</h2>
+              <p>Vendeur : <strong>{seller?.name || '-'}</strong></p>
+              <p>Joueur actif : <strong>{activePlayer?.name || '-'}</strong></p>
+              <p>Lancer : <strong>{currentTurn?.rollNumber || 0} / 3</strong></p>
             </div>
 
-            {currentTurn && (
-              <div className="card">
-                <h2>Tour actuel</h2>
-                <p>Vendeur: <strong>{seller?.name}</strong></p>
-                <p>Joueur actif: <strong>{activePlayer?.name}</strong></p>
-                <p>Lancer: <strong>{currentTurn.rollNumber} / 3</strong></p>
-                {auction && (
-                  <div className="auction-box">
-                    <h3>Enchère</h3>
-                    <p>
-                      Phase: {
-                        auction.phase === 'bidding'
-                          ? 'offres'
-                          : auction.phase === 'decision'
-                            ? 'décision du vendeur'
-                            : auction.phase === 'sold'
-                              ? 'vendu'
-                              : 'fermée'
-                      }
-                    </p>
-                    {(auction.phase === 'bidding' || auction.phase === 'decision') && (
-                      <p>Temps restant: {remainingAuctionSeconds}s</p>
-                    )}
-
-                    {auction.phase === 'bidding' && !iAmSeller && me && me.filledCount < 13 && (
-                      <div className="bid-row">
-                        <input
-                          type="number"
-                          min="1"
-                          value={bidAmount}
-                          onChange={(e) => setBidAmount(e.target.value)}
-                          placeholder="Montant"
-                        />
-                        <button onClick={placeBid}>Envoyer mon offre</button>
-                      </div>
-                    )}
-
-                    {auction.phase === 'bidding' && iAmSeller && (
-                      <p>Les autres joueurs peuvent soumettre une seule offre privée.</p>
-                    )}
-
-                    {iAmSeller && (auction.phase === 'decision' || auction.phase === 'sold') && (
-                      <div>
-                        <h4>Offres reçues</h4>
-                        {visibleBids.length === 0 ? (
-                          <p>Aucune offre.</p>
-                        ) : (
-                          visibleBids.map((bid) => (
-                            <div key={bid.playerId} className="bid-item">
-                              <span>{bid.name}: {bid.amount} pièces</span>
-                              {auction.phase === 'decision' && (
-                                <button onClick={() => acceptBid(bid.playerId, bid.amount)}>
-                                  Accepter
-                                </button>
-                              )}
-                            </div>
-                          ))
-                        )}
-                        {auction.phase === 'decision' && (
-                          <button onClick={closeAuctionWithoutSale}>Refuser toutes les offres</button>
-                        )}
-                      </div>
-                    )}
-
-                    {!iAmSeller && auction.phase !== 'bidding' && (
-                      <p>Enchère en cours, attente de la décision du vendeur.</p>
-                    )}
-
-                    {auction.phase === 'sold' && (
-                      <p>Roll vendu à {room.players?.[auction.soldTo]?.name} pour {auction.amount} pièces.</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
-
-          <section className="center-column" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {orderedPlayers.map((player) => renderPlayerGrid(player))}
-          </section>
-
-          <section className="right-column">
             <div className="card">
               <h2>Classement</h2>
               <ol className="ranking">
@@ -753,17 +627,246 @@ function App() {
               </ol>
             </div>
 
-            {room.status === 'finished' && (
+            <div className="card">
+              <h2>Joueurs</h2>
+              <div className="players-list">
+                {orderedPlayers.map((p, index) => (
+                  <div
+                    key={p.id}
+                    className={`player-row ${currentTurn?.activePlayerId === p.id ? 'active' : ''}`}
+                  >
+                    <div>
+                      <strong>{index + 1}. {p.name}</strong>
+                      <div className="muted">
+                        {p.coins} pièces · {p.filledCount}/13 cases
+                      </div>
+                    </div>
+                    {iAmHost && p.id !== playerId && room.status !== 'finished' && (
+                      <button className="danger" onClick={() => removePlayer(p.id)}>
+                        Exclure
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {auction && (
               <div className="card">
-                <h2>Partie terminée</h2>
-                <p>Le score final = score Yahtzee + pièces restantes.</p>
+                <h2>Enchères</h2>
+                <p>
+                  Phase : {
+                    auction.phase === 'bidding'
+                      ? 'Offres'
+                      : auction.phase === 'decision'
+                        ? 'Décision'
+                        : auction.phase === 'sold'
+                          ? 'Vendu'
+                          : 'Fermée'
+                  }
+                </p>
+
+                {(auction.phase === 'bidding' || auction.phase === 'decision') && (
+                  <p>Temps restant : <strong>{remainingAuctionSeconds}s</strong></p>
+                )}
+
+                {auction.phase === 'bidding' && !iAmSeller && me && me.filledCount < 13 && (
+                  <div className="bid-row">
+                    <input
+                      type="number"
+                      min="1"
+                      value={bidAmount}
+                      onChange={(e) => setBidAmount(e.target.value)}
+                      placeholder="Montant"
+                    />
+                    <button onClick={placeBid}>Envoyer mon offre</button>
+                  </div>
+                )}
+
+                {auction.phase === 'bidding' && iAmSeller && (
+                  <p>Les autres joueurs peuvent envoyer une seule offre privée.</p>
+                )}
+
+                {iAmSeller && (auction.phase === 'decision' || auction.phase === 'sold') && (
+                  <div className="bids-list">
+                    <h3>Offres reçues</h3>
+                    {visibleBids.length === 0 ? (
+                      <p>Aucune offre.</p>
+                    ) : (
+                      visibleBids.map((bid) => (
+                        <div key={bid.playerId} className="bid-item">
+                          <span>{bid.name} : {bid.amount} pièces</span>
+                          {auction.phase === 'decision' && (
+                            <button onClick={() => acceptBid(bid.playerId, bid.amount)}>
+                              Accepter
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    )}
+                    {auction.phase === 'decision' && (
+                      <button onClick={closeAuctionWithoutSale}>Refuser toutes les offres</button>
+                    )}
+                  </div>
+                )}
+
+                {!iAmSeller && auction.phase !== 'bidding' && (
+                  <p>En attente de la décision du vendeur.</p>
+                )}
+
+                {auction.phase === 'sold' && (
+                  <p>
+                    Roll vendu à <strong>{room.players?.[auction.soldTo]?.name}</strong> pour{' '}
+                    <strong>{auction.amount}</strong> pièces.
+                  </p>
+                )}
               </div>
             )}
+          </aside>
+
+          <section className="main-panel">
+            <div className="card board-card">
+              <div className="table-wrap">
+                <table className="multi-score-table">
+                  <thead>
+                    <tr>
+                      <th className="sticky-col category-col">Case</th>
+                      {orderedPlayers.map((player) => (
+                        <th
+                          key={player.id}
+                          className={`player-col ${currentTurn?.activePlayerId === player.id ? 'player-col-active' : ''}`}
+                        >
+                          <div className="player-head">
+                            <div className="player-head-name">
+                              {player.name} {player.id === playerId ? '(moi)' : ''}
+                            </div>
+                            <div className="player-head-meta">
+                              {player.coins} pièces
+                            </div>
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {CATEGORIES.map((cat) => (
+                      <tr key={cat.key}>
+                        <td className="sticky-col category-cell">{cat.label}</td>
+                        {orderedPlayers.map((player) => {
+                          const isMe = player.id === playerId;
+                          const canValidate =
+                            isMe &&
+                            canScoreMe &&
+                            player.scorecard[cat.key] === null &&
+                            myAllowed.includes(cat.key);
+
+                          const preview = isMe && canScoreMe
+                            ? scoreForCategory(player.scorecard, cat.key, currentTurn.dice)
+                            : 0;
+
+                          return (
+                            <td
+                              key={`${player.id}-${cat.key}`}
+                              className={currentTurn?.activePlayerId === player.id ? 'active-player-cell' : ''}
+                            >
+                              {player.scorecard[cat.key] !== null ? (
+                                <div className="cell-value">{player.scorecard[cat.key]}</div>
+                              ) : canValidate ? (
+                                <button
+                                  className="score-btn"
+                                  onClick={() => scoreCategory(cat.key)}
+                                >
+                                  Valider ({preview})
+                                </button>
+                              ) : (
+                                <span className="empty-mark">-</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+
+                    <tr className="bonus-row">
+                      <td className="sticky-col category-cell">Bonus supérieur</td>
+                      {orderedPlayers.map((player) => (
+                        <td key={`${player.id}-bonus`}>
+                          <div className="bonus-cell">
+                            {player.upperBonus}
+                            <span className="bonus-sub">
+                              ({Math.max(0, 63 - UPPER_KEYS.reduce((acc, key) => acc + (player.scorecard[key] ?? 0), 0))} restants)
+                            </span>
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+
+                    <tr className="bonus-row">
+                      <td className="sticky-col category-cell">Bonus Yahtzee</td>
+                      {orderedPlayers.map((player) => (
+                        <td key={`${player.id}-ybonus`}>
+                          {(player.yahtzeeBonusCount || 0) * 100}
+                        </td>
+                      ))}
+                    </tr>
+
+                    <tr className="total-row">
+                      <td className="sticky-col category-cell">Total</td>
+                      {orderedPlayers.map((player) => (
+                        <td key={`${player.id}-total`}>
+                          <div className="total-cell">{player.finalScore}</div>
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {currentTurn && (
+                <div className="bottom-play-area">
+                  <div className="dice-section">
+                    <div className="bottom-title">
+                      Dés du joueur actif : <strong>{activePlayer?.name}</strong>
+                    </div>
+
+                    <div className="dice-row">
+                      {currentTurn.dice.map((die, index) => (
+                        <button
+                          key={`die-${index}`}
+                          className={`die ${currentTurn.holds[index] ? 'held' : ''}`}
+                          onClick={() => toggleHold(index)}
+                          disabled={!iAmActive || ![1, 2].includes(currentTurn.rollNumber)}
+                        >
+                          {die}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="turn-actions">
+                      {iAmActive && currentTurn.rollNumber === 0 && (
+                        <button onClick={rollFirst}>1er lancer</button>
+                      )}
+
+                      {iAmActive &&
+                        [1, 2].includes(currentTurn.rollNumber) &&
+                        !(currentTurn.rollNumber === 2 && auction && auction.phase !== 'sold') && (
+                          <button onClick={reroll}>
+                            {currentTurn.rollNumber === 1 ? '2e lancer' : '3e lancer'}
+                          </button>
+                        )}
+
+                      {iAmActive && currentTurn.rollNumber === 2 && !auction && (
+                        <button onClick={openAuction}>Ouvrir les enchères</button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </section>
         </main>
       )}
     </div>
   );
 }
-
-export default App;
